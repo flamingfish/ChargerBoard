@@ -16,12 +16,14 @@
 #include "timer.h"
 
 char readRegister(char address);
+void writeRegister(uint8_t address, uint8_t data);
 void testLoop();
 
 static inline void setup() {
-	setupGpios();
-	setupUSB();
 	setupTimer();
+	setupUSB();
+	_delay_ms(500);
+	setupGpios();
 	setupSPI();
 	setupCAN();
 }
@@ -33,13 +35,7 @@ static inline void update() {
 
 int main() {
 	setup();
-		//setGpioState(CHARGING_LED, ON);
-		//_delay_ms(500);
-		//setGpioState(CHARGING_LED, OFF);
-		//_delay_ms(500);
-		//setGpioState(CHARGING_LED, ON);
-		//_delay_ms(500);
-		//setGpioState(CHARGING_LED, OFF);
+	printf("Starting test\r\n");
 	while(1) {
 		update();
 	}
@@ -63,7 +59,7 @@ void testLoop() {
 	
 	if (count == 0) {
 		if (currentTime < 2000) {
-			printf("Milliseconds: %lu\r\n", currentTime);
+			//printf("Milliseconds: %lu\r\n", currentTime);
 			return; // equivalent to continue if this where a while loop
 		} else {
 			lastTime = currentTime;
@@ -82,19 +78,23 @@ void testLoop() {
 			printf("\r\n");
 			++count;
 		}
+	//} else if (count == 4) {
+		////printf("Before SPI\r\n");
+		////updateUSB();
+		////char data[1] = {0xaa};
+		////writeSPI(data, 1);
+		////printf("After SPI\r\n");
+		////updateUSB();
+		//
+		//printf("Before result\r\n");
+		//updateUSB();
+		//writeRegister(0x20, 0x00);
+		////char result = readRegister(0xff);
+		////printf("Result: 0x%02x\r\n", result);
+		////updateUSB();
 	} else if (count == 4) {
-		//printf("Before SPI\r\n");
-		//updateUSB();
-		//char data[1] = {0xaa};
-		//writeSPI(data, 1);
-		//printf("After SPI\r\n");
-		//updateUSB();
-		
-		printf("Before result\r\n");
-		updateUSB();
-		char result = readRegister(0xff);
-		printf("Result: 0x%02x\r\n", result);
-		updateUSB();
+		writeCAN(0x1806E5F4L, (uint8_t*) "Hello", 6);
+		++count;
 	} else {
 		if (currentTime - lastTime > 2000) {
 			lastTime = currentTime;
@@ -103,55 +103,3 @@ void testLoop() {
 	}
 }
 
-int main2() {
-	setupGpios();
-	setupUSB();
-	//setupSPI();
-	//setupCAN();
-	
-	setGpioState(CHARGING_LED, ON);
-	_delay_ms(500);
-	setGpioState(CHARGING_LED, OFF);
-	_delay_ms(500);
-	setGpioState(CHARGING_LED, ON);
-	_delay_ms(500);
-	setGpioState(CHARGING_LED, OFF);
-	
-	char data[1] = {0xaa};
-	writeSPI(data, 1);
-	return 0;
-	
-	//_delay_ms(10000);
-	//printf("Before result\r\n");
-	//char result = readRegister(0xff);
-	//printf("Result: 0x%x\r\n", 1);
-	
-	uint16_t i = 0;
-	while (1) {
-		updateUSB();
-		
-		if (i == 50) {
-			printf("Before result\r\n");
-			setGpioState(CHARGING_LED, ON);
-			updateUSB();
-			_delay_ms(500);
-			updateUSB();
-			_delay_ms(500);
-			updateUSB();
-			char result = readRegister(0xff);
-			printf("Result: 0x%x\r\n", 1);
-			updateUSB();
-		} else if (i > 50) {
-			printf("%s", "Hello there buddy\r\n");
-		}
-		
-
-		//for (uint32_t i = 0; i < 1000000; i++) {
-			//// do nothing
-		//}
-		_delay_ms(200);
-		i++;
-	}
-	
-	return 0;
-}

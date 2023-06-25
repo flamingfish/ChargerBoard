@@ -564,6 +564,9 @@
     <Compile Include="main.c">
       <SubType>compile</SubType>
     </Compile>
+    <Compile Include="REGS2515.h">
+      <SubType>compile</SubType>
+    </Compile>
     <Compile Include="SPI.c">
       <SubType>compile</SubType>
     </Compile>

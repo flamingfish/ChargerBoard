@@ -47,8 +47,8 @@ void setupSPI() {
 // Note: the SPIF flag in SPSR is cleared either when the interrupt handling
 // vector is called, or if SPSR is read with SPIF set followed by accessing SPDR.
 
-void writeSPI(char* data, uint8_t dataLength) {
-	char flushBuffer;
+void writeSPI(uint8_t* data, uint8_t dataLength) {
+	uint8_t flushBuffer;
 	// Set SS low
 	PORTB &= !(1 << SS);
 	for (uint8_t i = 0; i < dataLength; i++) {
@@ -60,8 +60,8 @@ void writeSPI(char* data, uint8_t dataLength) {
 	PORTB |= (1 << SS);
 }
 
-void readSPI(char* writePreamble, uint8_t writeLength, char* readData, uint8_t readLength) {
-	char flushBuffer;
+void readSPI(uint8_t* writePreamble, uint8_t writeLength, uint8_t* readData, uint8_t readLength) {
+	uint8_t flushBuffer;
 	// Set SS low
 	PORTB &= !(1 << SS);
 	for (uint8_t i = 0; i < writeLength; i++) {

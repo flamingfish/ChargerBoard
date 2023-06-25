@@ -20,7 +20,7 @@ void setupTimer() {
 	// Clear the timer
 	TCNT0 = 0;
 	
-	// Set the output compare value to be 124
+	// Set the output compare value to be 124 if F_CPU=8MHz
 	OCR0A = 249;
 	
 	// Timer counter control registers
