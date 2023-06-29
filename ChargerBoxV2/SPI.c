@@ -22,7 +22,7 @@
 #define MISO 3
 
 #define SPI_ASYNC_DATA_BUF_LEN (3 * SPI_ASYNC_QUEUE_LEN)
-#define SPI_ASYNC_MAX_READ_LEN 10
+#define SPI_ASYNC_MAX_READ_LEN 16
 
 typedef struct {
 	uint8_t* data; // Need to be careful when iterating through data - may wrap around in data buffer
@@ -150,6 +150,7 @@ static uint8_t removeItemFromBuffer() {
 static void processAsyncSPIItem();
 
 static void startAsyncSPIItem() {
+	SPI_DEBUG_LOG("startAsyncSPIItem\r\n");
 	asyncTransmission = true;
 	SPIItem* currentItem = &spiItemBuffer[spiItemBufferHead];
 	currentWriteData = currentItem->data;
@@ -186,12 +187,13 @@ static void processAsyncSPIItem() {
 		return;
 	}
 	if (asyncWriteIndex == currentItem->writeLen && currentItem->readLen == 0) {
-		SPI_DEBUG_LOG("Finished writing data.");
 		// This async spi write item is now done.
+		(void) SPDR; // Read buffer to flush, discard value
 		// Set SS high
 		PORTB |= (1 << SS);
+		SPI_DEBUG_LOG("Finished writing data.");
 		if (currentItem->callback) {
-			SPI_DEBUG_LOG("Calling write callback.\r\n");
+			SPI_DEBUG_LOG(" Calling write callback.\r\n");
 			currentItem->callback();
 		}
 		goto endOfSpiItem;
@@ -249,7 +251,7 @@ void setupSPI() {
 	PORTB |= (1 << SS);
 	
 	// Enable SPI, SPI interrupt, MSB first, master SPI mode, SCK low when idle,
-	// leading edge sample trailing edge setup, fastest speed
+	// leading edge sample trailing edge setup, fastest speed = F_CPU/4 = 4MHz
 	SPCR = (1 << SPIE) | (1 << SPE) | (1 << MSTR);
 	SPSR &= ~(1 << SPI2X);
 	
@@ -261,7 +263,7 @@ void setupSPI() {
 // vector is called, or if SPSR is read with SPIF set followed by accessing SPDR.
 
 void writeSPI(uint8_t* data, uint8_t dataLength) {
-	uint8_t flushBuffer;
+	//uint8_t flushBuffer;
 	ATOMIC_BLOCK(ATOMIC_FORCEON) {
 		synchronousTransmission = true;
 	}
@@ -272,7 +274,8 @@ void writeSPI(uint8_t* data, uint8_t dataLength) {
 	for (uint8_t i = 0; i < dataLength; i++) {
 		SPDR = data[i]; // Write data to SPI data register
 		while(!(SPSR & (1 << SPIF))); // Wait until transmission complete
-		flushBuffer = SPDR;
+		//flushBuffer = SPDR;
+		(void) SPDR; // Read buffer to flush, discard value
 	}
 	// Set SS high
 	PORTB |= (1 << SS);
@@ -289,7 +292,7 @@ void writeSPI(uint8_t* data, uint8_t dataLength) {
 }
 
 void readSPI(uint8_t* writePreamble, uint8_t writeLength, uint8_t* readData, uint8_t readLength) {
-	uint8_t flushBuffer;
+	//uint8_t flushBuffer;
 	ATOMIC_BLOCK(ATOMIC_FORCEON) {
 		synchronousTransmission = true;
 	}
@@ -300,7 +303,8 @@ void readSPI(uint8_t* writePreamble, uint8_t writeLength, uint8_t* readData, uin
 	for (uint8_t i = 0; i < writeLength; i++) {
 		SPDR = writePreamble[i]; // Write data to SPI data register
 		while(!(SPSR & (1 << SPIF))); // Wait till transmission complete
-		flushBuffer = SPDR;
+		//flushBuffer = SPDR;
+		(void) SPDR; // Read buffer to flush, discard value
 	}
 	
 	for (uint8_t i = 0; i < readLength; i++) {
@@ -326,13 +330,16 @@ void readSPI(uint8_t* writePreamble, uint8_t writeLength, uint8_t* readData, uin
 uint8_t asyncWriteSPI(uint8_t* data, uint8_t dataLength, void (*callback)(void)) {
 	// Add to queue
 	uint8_t result;
-	if ((result = addItemToBuffer(data, dataLength, 0, callback))) {
+	bool isAsync;
+	// must be restorestate since this can be called inside another ISR
+	// And inside ISRs, global interrupts are disabled by default
+	ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+		result = addItemToBuffer(data, dataLength, 0, callback);
+		isAsync = asyncTransmission;
+	}
+	if (result) {
 		setGpioState(CHARGER_FAULT_LED, ON); // for debug purposes
 		return result;
-	}
-	bool isAsync;
-	ATOMIC_BLOCK(ATOMIC_FORCEON) {
-		isAsync = asyncTransmission;
 	}
 	if (synchronousTransmission || isAsync) {
 		return 0;
@@ -346,13 +353,16 @@ uint8_t asyncWriteSPI(uint8_t* data, uint8_t dataLength, void (*callback)(void))
 uint8_t asyncReadSPI(uint8_t* writePreamble, uint8_t writeLength, uint8_t readLength, void (*callback)(uint8_t*)) {
 	// Add to queue
 	uint8_t result;
-	if ((result = addItemToBuffer(writePreamble, writeLength, readLength, (void (*)(void)) callback))) {
+	bool isAsync;
+	// must be restorestate since this can be called inside another ISR
+	// And inside ISRs, global interrupts are disabled by default
+	ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+		result = addItemToBuffer(writePreamble, writeLength, readLength, (void (*)(void)) callback);
+		isAsync = asyncTransmission;
+	}
+	if (result) {
 		setGpioState(CHARGER_FAULT_LED, ON); // for debug purposes
 		return result;
-	}
-	bool isAsync;
-	ATOMIC_BLOCK(ATOMIC_FORCEON) {
-		isAsync = asyncTransmission;
 	}
 	if (synchronousTransmission || isAsync) {
 		return 0;

@@ -32,6 +32,7 @@ static inline void setup() {
 
 static inline void update() {
 	updateUSB();
+	updateCAN();
 	testLoop();
 }
 

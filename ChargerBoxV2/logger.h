@@ -13,6 +13,7 @@
 // Define the types of logging you want
 #define DEBUG_LOGGING
 #define SPI_DEBUG_LOGGING
+#define CAN_DEBUG_LOGGING
 // =====================================
 
 #ifdef DEBUG_LOGGING
@@ -24,9 +25,15 @@
 #	else
 #		define SPI_DEBUG_LOG(x, ...) // do nothing
 #	endif
+#	ifdef CAN_DEBUG_LOGGING
+#		define CAN_DEBUG_LOG(x, ...) DEBUG_LOG(x, ##__VA_ARGS__)
+#	else
+#		define CAN_DEBUG_LOG(x, ...) // do nothing
+#	endif
 # else
 #	define DEBUG_LOG(x, ...) // do nothing
 #	define SPI_DEBUG_LOG(x, ...) // do nothing
+#	define CAN_DEBUG_LOG(x, ...) // do nothing
 #endif
 
 
