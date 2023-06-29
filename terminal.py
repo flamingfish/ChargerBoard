@@ -16,7 +16,7 @@ while 1:
             print('NOTICE: Established connection')
         except SerialException:
             if ((t:=time()) - last_time >= 5):
-                print('Unable to connect, retrying...')
+                print('NOTICE: Unable to connect, retrying...')
                 last_time = t
     
     else:
@@ -29,5 +29,5 @@ while 1:
             ser.is_open = False
 
         except UnicodeDecodeError:
-            print('Got non-ascii text:')
+            #print('Got non-ascii text:')
             print(value)

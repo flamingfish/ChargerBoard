@@ -14,9 +14,11 @@
 #include "util/delay.h"
 #include <stdbool.h>
 #include "timer.h"
+#include <avr/pgmspace.h>
+#include "logger.h"
 
-char readRegister(char address);
-void writeRegister(uint8_t address, uint8_t data);
+//char readRegister(char address);
+//void writeRegister(uint8_t address, uint8_t data);
 void testLoop();
 
 static inline void setup() {
@@ -35,7 +37,6 @@ static inline void update() {
 
 int main() {
 	setup();
-	printf("Starting test\r\n");
 	while(1) {
 		update();
 	}
@@ -64,7 +65,8 @@ void testLoop() {
 		} else {
 			lastTime = currentTime;
 			++count;
-			printf("Starting program\r\n");
+			//printf("Starting program\r\n");
+			DEBUG_LOG("Starting program\r\n");
 		}
 	}
 	
@@ -93,7 +95,9 @@ void testLoop() {
 		////printf("Result: 0x%02x\r\n", result);
 		////updateUSB();
 	} else if (count == 4) {
-		writeCAN(0x1806E5F4L, (uint8_t*) "Hello", 6);
+		//writeCAN(0x1806E5F4L, (uint8_t*) "Hello", 6);
+		setCANID(0, 0x1806E5F4L);
+		sendCANMessage(0, (uint8_t*) "Hello", 6);
 		++count;
 	} else {
 		if (currentTime - lastTime > 2000) {

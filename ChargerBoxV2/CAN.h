@@ -24,6 +24,21 @@
 void setupCAN();
 void writeCAN(uint32_t canID, uint8_t* data, uint8_t dataLen);
 
+/**
+ * Set the CAN ID for one of the transmit buffers (1 to 3).
+ */
+void setCANID(uint8_t bufferNum, uint32_t id);
+
+/**
+ * Send a CAN message from one of the transmit buffers (1 to 3).
+ *
+ * Data length must be no greater than 8 bytes
+ */
+void sendCANMessage(uint8_t bufferNum, uint8_t* data, uint8_t dataLen);
+
+/**
+ * asdf
+ */
 void updateCAN();
 
 
