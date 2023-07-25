@@ -37,7 +37,7 @@ void setCANID(uint8_t bufferNum, uint32_t id);
 void sendCANMessage(uint8_t bufferNum, uint8_t* data, uint8_t dataLen);
 
 /**
- * asdf
+ * Must be called in main update loop.
  */
 void updateCAN();
 

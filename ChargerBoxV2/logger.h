@@ -14,6 +14,7 @@
 #define DEBUG_LOGGING
 #define SPI_DEBUG_LOGGING
 #define CAN_DEBUG_LOGGING
+#define PC_COMMS_DEBUG_LOGGING
 // =====================================
 
 #ifdef DEBUG_LOGGING
@@ -29,6 +30,11 @@
 #		define CAN_DEBUG_LOG(x, ...) DEBUG_LOG(x, ##__VA_ARGS__)
 #	else
 #		define CAN_DEBUG_LOG(x, ...) // do nothing
+#	endif
+#	ifdef PC_COMMS_DEBUG_LOGGING
+#		define PC_COMMS_DEBUG_LOG(x, ...) DEBUG_LOG(x, ##__VA_ARGS__)
+#	else
+#		define PC_COMMS_DEBUG_LOG(x, ...) // do nothing
 #	endif
 # else
 #	define DEBUG_LOG(x, ...) // do nothing

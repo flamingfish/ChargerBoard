@@ -16,10 +16,21 @@
 #include "timer.h"
 #include <avr/pgmspace.h>
 #include "logger.h"
+#include "PCComms.h"
 
 //char readRegister(char address);
 //void writeRegister(uint8_t address, uint8_t data);
 void testLoop();
+
+typedef enum ChargerState {
+	CHARGER_IDLE,
+	CHARGER_CHARGING,
+	CHARGER_ERROR
+} ChargerState;
+
+void mainLoop() {
+	
+}
 
 static inline void setup() {
 	setupTimer();
@@ -28,12 +39,15 @@ static inline void setup() {
 	setupGpios();
 	setupSPI();
 	setupCAN();
+	setupPCComms();
 }
 
 static inline void update() {
 	updateUSB();
 	updateCAN();
+	updatePCComms();
 	testLoop();
+	mainLoop();
 }
 
 int main() {
@@ -48,6 +62,8 @@ int main() {
 void startBlinkLEDs() {
 	
 }
+
+char receiveBuffer[20];
 
 void testLoop() {
 	// Static varaibles
@@ -104,6 +120,17 @@ void testLoop() {
 		if (currentTime - lastTime > 2000) {
 			lastTime = currentTime;
 			printf("Inside main loop\r\n");
+			//char* result = fgets(receiveBuffer, 20, stdin);
+			//if (result == 0) {
+				//printf_P(PSTR("No bytes received\r\n"));
+			//} else {
+				//printf_P(PSTR("Received bytes: "));
+				//printf("%s\r\n", result);
+			//}
+			const PCCommsMessage* receivedMessage = receivePCMessage();
+			if (receivedMessage) {
+				printf("Received message!\r\n");
+			}
 		}
 	}
 }

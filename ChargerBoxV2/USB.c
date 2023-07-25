@@ -108,7 +108,10 @@ void setupUSB() {
 
 void updateUSB() {
 	/* Must throw away unused bytes from the host, or it will lock up while waiting for the device */
-	CDC_Device_ReceiveByte(&VirtualSerial_CDC_Interface);
+	//int16_t result = CDC_Device_ReceiveByte(&VirtualSerial_CDC_Interface);
+	//if (result >= 0) {
+		//printf("RX: %d\r\n", result);
+	//}
 
 	CDC_Device_USBTask(&VirtualSerial_CDC_Interface);
 	USB_USBTask();

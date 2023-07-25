@@ -567,6 +567,12 @@
     <Compile Include="main.c">
       <SubType>compile</SubType>
     </Compile>
+    <Compile Include="PCComms.c">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="PCComms.h">
+      <SubType>compile</SubType>
+    </Compile>
     <Compile Include="REGS2515.h">
       <SubType>compile</SubType>
     </Compile>

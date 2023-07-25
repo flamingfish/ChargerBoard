@@ -14,6 +14,7 @@ while 1:
         try:
             ser.open()
             print('NOTICE: Established connection')
+            #ser.write(b'Testing: Hello there!\r\n')
         except SerialException:
             if ((t:=time()) - last_time >= 5):
                 print('NOTICE: Unable to connect, retrying...')
@@ -22,7 +23,12 @@ while 1:
     else:
         try:
             value = ser.readline()
-            line = value.decode('ascii').strip()
+            line = value.decode('ascii').strip('\r\n ') # don't want to strip tabs
+            if line == 'Inside main loop':
+                #print('NOTICE: Sending "Hello there"')
+                #ser.write(b'Hello there!\r\n')
+                print('NOTICE: sending message')
+                ser.write(bytes([0xff, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x06, 0x07, 0x69, 0x00]))
             print(line)
         except SerialException:
             print('NOTICE: Lost connection')
