@@ -17,19 +17,92 @@
 #include <avr/pgmspace.h>
 #include "logger.h"
 #include "PCComms.h"
+#include "ControlLoop.h"
 
 //char readRegister(char address);
 //void writeRegister(uint8_t address, uint8_t data);
 void testLoop();
 
-typedef enum ChargerState {
-	CHARGER_IDLE,
-	CHARGER_CHARGING,
-	CHARGER_ERROR
-} ChargerState;
+static bool amsError;
+static OperatingMode operatingMode;
+static uint16_t setChargeVoltage;
+static uint16_t setChargeCurrent;
 
-void mainLoop() {
+void controlSetup() {
+	amsError = false;
+	operatingMode = OPERATING_IDLE;
+}
+
+void controlLoop() {
+	static const PCCommsMessage* receiveMessage;
+	// ===== Check for CAN messages:
 	
+	// ===== Check for PC messages:
+	receiveMessage = receivePCMessage();
+	if (receiveMessage) { // If not NULL pointer
+		switch (receiveMessage->id) {
+		case PC_MSG_START_CHARGE_ID:
+			DEBUG_LOG("Trying to start charge\r\n");
+			switch (operatingMode) {
+			case OPERATING_IDLE:
+				setChargeVoltage = receiveMessage->startCharge.maxChargingVoltage;
+				setChargeCurrent = receiveMessage->startCharge.maxChargingCurrent;
+				// close enable relay
+				setGpioState(ENABLE_CHARGE_SIGNAL, ON);
+				// send confirmation back to PC
+				operatingMode = OPERATING_CHARGING;
+				break;
+			case OPERATING_CHARGING:
+				DEBUG_LOG("Already in charging mode\r\n");
+				// Update the voltage and current with new values
+				setChargeVoltage = receiveMessage->startCharge.maxChargingVoltage;
+				setChargeCurrent = receiveMessage->startCharge.maxChargingCurrent;
+				break;
+			case OPERATING_ERROR:
+				DEBUG_LOG("Unable to start charge since in ERROR mode\r\n");
+				break;
+			case OPERATING_TESTING:
+				DEBUG_LOG("Unable to start charge since in TESTING mode\r\n");
+				break;
+			}
+			break;
+		}
+	}
+	
+	// if "start charging" (comes with voltage and current):
+	// if mode == IDLE:
+	// close enable relay, change mode to OPERATING_CHARGING (which will send heartbeat), send confirmation back to PC
+	// if mode == CHARGING:
+	// update voltage and current, send confirmation back to PC
+	// if mode == ERROR:
+	// send message back to PC explaining error
+	// if mode == TESTING:
+	// send message back to PC explaining why
+	
+	
+	// if "stop charging":
+	// send heartbeat message with charging set to OFF, then open enable relay after confirmation from charger, then send confirmation back to PC
+	
+	// if "heartbeat":
+	
+	//if "run test"
+	
+	// ===== Check for buttons/switches (e.g. enable switch)
+	
+	// Perform necessary tasks
+	switch (operatingMode) {
+	case OPERATING_IDLE:
+		break;
+	case OPERATING_CHARGING:
+		// send charging message at 1Hz
+		break;
+	case OPERATING_ERROR:
+		break;
+	case OPERATING_TESTING:
+		break;
+	}
+	
+	// send PC status info at 1Hz
 }
 
 static inline void setup() {
@@ -40,6 +113,7 @@ static inline void setup() {
 	setupSPI();
 	setupCAN();
 	setupPCComms();
+	controlSetup();
 }
 
 static inline void update() {
@@ -47,7 +121,7 @@ static inline void update() {
 	updateCAN();
 	updatePCComms();
 	testLoop();
-	mainLoop();
+	controlLoop();
 }
 
 int main() {
@@ -127,7 +201,7 @@ void testLoop() {
 				//printf_P(PSTR("Received bytes: "));
 				//printf("%s\r\n", result);
 			//}
-			const PCCommsMessage* receivedMessage = receivePCMessage();
+			const PCCommsRawMessage* receivedMessage = receiveRawPCMessage();
 			if (receivedMessage) {
 				printf("Received message!\r\n");
 			}

@@ -9,6 +9,8 @@ ser.baudrate = 9600
 
 last_time = time()
 
+start_charge_msg = bytes([0xff, 0x01, 0x04, 0x00, 0x08, 0x00, 0x14, 0x00])
+
 while 1:
     if not ser.is_open:
         try:
@@ -27,8 +29,10 @@ while 1:
             if line == 'Inside main loop':
                 #print('NOTICE: Sending "Hello there"')
                 #ser.write(b'Hello there!\r\n')
-                print('NOTICE: sending message')
-                ser.write(bytes([0xff, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x06, 0x07, 0x69, 0x00]))
+                # print('NOTICE: sending message')
+                # ser.write(bytes([0xff, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x06, 0x07, 0x69, 0x00]))
+                ser.write(start_charge_msg)
+                pass
             print(line)
         except SerialException:
             print('NOTICE: Lost connection')
