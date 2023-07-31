@@ -16,15 +16,21 @@
 
 #include "USB.h"
 
+// For READ_RX_BUFFER instruction
+#define START_AT_RXBnSIDH 0
+#define START_AT_RXBnD0 1
+
 // Instruction codes
 #define RESET_INSTRUC 0xC0
 #define READ_INSTRUC 0x03
+// Read receive buffer (n for buffer num, m=0 to start at RXBnSIDH, m=1 to start at RXBnD0)
+#define READ_RX_BUFFER_INSTRUC(n, m) (0x90 | ((n & 0x01) << 2) | ((m & 0x01) << 1))
 #define WRITE_INSTRUC 0x02
 // Request to send (nnn are last 3 bits, 1 for each transmit buffer)
 #define RTS_INSTRUC(nnn) (0x80 | (nnn & 0x07))
 #define READ_STATUS_INSTRUC 0xA0
 #define RX_STATUS_INSTRUC 0xB0
-#define BIT_MODIFY 0x05
+#define BIT_MODIFY_INSTRUC 0x05
 
 #define BMS_INFO_MESSAGE_ID 0x1806E5F4L
 
@@ -39,28 +45,17 @@ typedef struct {
 
 // Buffers to hold received data;
 static RXBuffer rxBuffers[2] = {0}; // initialise everything to 0
-
-//// Buffers to hold received data;
-//static uint8_t rx0Buffer[8];
-//static uint8_t rx0Len = 0;
-//static bool rx0Flag = false;
-//static uint32_t rx0CanID = 0;
-//static uint8_t rx0ide = 0; // extended identifier flag
-//static uint8_t rx0ssr = 0; // standard frame remote transmit request bit (valid only if ide = 0)
-//
-//static uint8_t rx1Buffer[8];
-//static uint8_t rx1Len = 0;
-//static bool rx1Flag = false;
-//static uint32_t rx1CanID = 0;
-//static uint8_t rx1ide = 0; // extended identifier flag
-//static uint8_t rx1ssr = 0; // standard frame remote transmit request bit (valid only if ide = 0)
+	
+static volatile bool tx0empty = true;
+static volatile bool tx1empty = true;
+static volatile bool tx2empty = true;
 
 static void reset() {
 	uint8_t data[1] = {RESET_INSTRUC};
 	writeSPI(data, 1);
 }
 
-static uint8_t readRegister(uint8_t address) {
+ uint8_t readRegister(uint8_t address) {
 	uint8_t result;
 	uint8_t data[2] = {READ_INSTRUC, address};
 	readSPI(data, 2, &result, 1);
@@ -122,12 +117,24 @@ void setupCAN() {
 	_delay_ms(1);
 	
 	// Clear masks to RX all messages
-	writeRegister(RXM0SIDH, 0x00);
-	writeRegister(0x20, 0x00);
 	writeRegister(RXM0SIDL, 0x00);
+	writeRegister(RXM0SIDH, 0x00);
+	writeRegister(RXM0EID0, 0x00);
+	writeRegister(RXM0EID8, 0x00);
+	writeRegister(RXM1SIDL, 0x00);
+	writeRegister(RXM1SIDH, 0x00);
+	writeRegister(RXM1EID0, 0x00);
+	writeRegister(RXM1EID8, 0x00);
 	
-	// Clear filter
-	writeRegister(RXF0SIDL, 0x00);
+	// Clear filters (but set to receive extended IDs)
+	writeRegister(RXF0SIDL, EXIDE_SET);
+	writeRegister(RXF0SIDH, 0x00);
+	writeRegister(RXF0EID0, 0x00);
+	writeRegister(RXF0EID8, 0x00);
+	writeRegister(RXF1SIDL, EXIDE_SET);
+	writeRegister(RXF1SIDH, 0x00);
+	writeRegister(RXF1EID0, 0x00);
+	writeRegister(RXF1EID8, 0x00);
 	
 	
 	// Timing based on 8 TQ (time quantum) per bit time
@@ -158,7 +165,11 @@ void setupCAN() {
 	// Interrupt on RXB0 full - CANINTE
 	// Also on TX0IE empty
 	//writeRegister(CANINTE, RX0IE | TX0IE);
-	writeRegister(CANINTE, RX0IE | RX1IE);
+	//writeRegister(CANINTE, RX0IE | RX1IE);
+	
+	// Interrupt on Error:
+	// No need to interrupt on RX buffer full - they have individual interrupt lines
+	writeRegister(CANINTE, ERRIE);
 	
 	// Set NORMAL mode
 	// One-shot mode disabled (will attempt to retransmit message)
@@ -192,7 +203,7 @@ void setupCAN() {
 	writeRegister(TXRTSCTRL, 0x07);
 	
 	// Enable receive interrupt pins
-	writeRegister(BFPCTRL, 0x0f);
+	writeRegister(BFPCTRL, B0BFM | B1BFM | B0BFE | B1BFE);
 	
 	// Enter loopback mode for testing
 	writeRegister(CANCTRL, REQOP_LOOPBACK);
@@ -291,12 +302,15 @@ void sendCANMessage(uint8_t bufferNum, uint8_t* data, uint8_t dataLen) {
 	// Set the address for the right buffer
 	switch (bufferNum) {
 	case 0:
+		tx0empty = false;
 		buffer[1] = TXB0DLC;
 		break;
 	case 1:
+		tx1empty = false;
 		buffer[1] = TXB1DLC;
 		break;
 	case 2:
+		tx2empty = false;
 		buffer[1] = TXB2DLC;
 		break;
 	default:
@@ -344,19 +358,19 @@ static void extractRXBuffer(uint8_t bufferNum, uint8_t* data) {
 	// AVR is little endian
 	uint8_t* canIDPart = (uint8_t*) &buffer->canID;
 	// RXBnEID0
-	canIDPart[0] = data[4];
+	canIDPart[0] = data[3];
 	// RXBnEID8
-	canIDPart[1] = data[3];
+	canIDPart[1] = data[2];
 	// RXBnSIDL = data[2] and RXBnSIDH = data[1]
-	canIDPart[2] = (data[2] & 0x03) | ((data[2] & 0xe0) >> 3) | ((data[1] & 0x03) << 5);
-	canIDPart[3] = ((data[1] & 0xf8) >> 3);
+	canIDPart[2] = (data[1] & 0x03) | ((data[1] & 0xe0) >> 3) | ((data[0] & 0x03) << 5);
+	canIDPart[3] = ((data[0] & 0xf8) >> 3);
 	
 	// RXBnDLC
-	buffer->len = data[5] & 0x0f;
+	buffer->len = data[4] & 0x0f;
 	
 	// Now extract the data
 	for (uint8_t i = 0; i < buffer->len; i++) {
-		buffer->data[i] = data[i + 6];
+		buffer->data[i] = data[i + 5];
 	}
 	
 	buffer->flag = true;
@@ -370,78 +384,98 @@ static void onReceiveRX1(uint8_t* data) {
 	extractRXBuffer(1, data);
 }
 
+#define RX1OVR 0x80 // RX1 overflow
+#define RX0OVR 0x40 // RX0 overflow
+#define TXBO 0x20 // Bus-Off Error Flag Bit
+#define TXEP 0x10 // Transmit error-passive flag bit
+#define RXEP 0x08 // Receive error-passive flag bit
+#define TXWAR 0x04 // Transmit Error Warning Flag bit
+#define RXWAR 0x02 // Receive Error Warning Flag bit
+#define EWARN 0x01 // Error Warning Flag bit == TXWAR | RXWAR
+
+// When the INT pin is driven low
+static void onInterrupt(uint8_t* data) {
+	uint8_t canintf = data[0];
+	uint8_t eflg = data[1];
+	if (canintf & ERRIF) {
+		// Error interrupt flag is set
+		if (eflg & RX0OVR) {
+			CAN_DEBUG_LOG("RX0 buffer has overflown\r\n");
+			// RX0 buffer has overflown
+		}
+		if (eflg & RX1OVR) {
+			CAN_DEBUG_LOG("RX1 buffer has overflown\r\n");
+			// RX1 buffer has overflown
+		}
+		if (eflg & TXBO) {
+			CAN_DEBUG_LOG("CAN in Bus-Off state (nothing connected)\r\n");
+			// Bus-Off state - nothing connected to CAN
+		}
+		if (eflg & TXEP) {
+			CAN_DEBUG_LOG("CAN in transmit error-passive state\r\n");
+		}
+		if (eflg & RXEP) {
+			CAN_DEBUG_LOG("CAN in receive error-passive state\r\n");
+		}
+		if (eflg & TXWAR) {
+			CAN_DEBUG_LOG("CAN in transmit error warning state\r\n");
+		}
+		if (eflg & RXWAR) {
+			CAN_DEBUG_LOG("CAN in receive error warning state\r\n");
+		}
+		if (eflg & EWARN) {
+			CAN_DEBUG_LOG("CAN in error warning state\r\n");
+		}
+	}
+	
+	uint8_t canintfMask = 0x00;
+	if (canintf & TX0IF) {
+		// TX0 buffer is empty and ready to send another message
+		tx0empty = true;
+		canintfMask |= TX0IF;
+	}
+	if (canintf & TX1IF) {
+		// TX1 buffer is empty and ready to send another message
+		tx1empty = true;
+		canintfMask |= TX1IF;
+	}
+	if (canintf & TX2IF) {
+		// TX2 buffer is empty and ready to send another message
+		tx2empty = true;
+		canintf |= TX2IF;
+	}
+	if (canintfMask) { // If there is actually a newly emptied buffer:
+		uint8_t writeData[3] = {BIT_MODIFY_INSTRUC, canintfMask, TX0IF | TX1IF | TX2IF};
+		asyncWriteSPI(writeData, 3, NULL); // actually want to set the tx-empty flags in clalback here
+	}
+}
+
 // RX0 buffer is full (received message)
 ISR(INT6_vect) {
 	CAN_DEBUG_LOG("Received message from RX0\r\n");
-	uint8_t preamble[2] = {READ_INSTRUC, RXB0CTRL};
-	asyncReadSPI(preamble, 2, 14, onReceiveRX0);
+	//uint8_t preamble[2] = {READ_INSTRUC, RXB0CTRL};
+	//asyncReadSPI(preamble, 2, 14, onReceiveRX0);
+	uint8_t preamble[1] = {READ_RX_BUFFER_INSTRUC(0, START_AT_RXBnSIDH)};
+	//asyncReadSPI(preamble, 1, 13, onReceiveRX0);
 }
 
 // RX1 buffer is full (received message)
 ISR(INT5_vect) {
 	CAN_DEBUG_LOG("Received message from RX1\r\n");
-	uint8_t preamble[2] = {READ_INSTRUC, RXB1CTRL};
-	asyncReadSPI(preamble, 2, 14, onReceiveRX1);
+	//uint8_t preamble[2] = {READ_INSTRUC, RXB1CTRL};
+	//asyncReadSPI(preamble, 2, 14, onReceiveRX1);
+	uint8_t preamble[1] = {READ_RX_BUFFER_INSTRUC(1, START_AT_RXBnSIDH)};
+	asyncReadSPI(preamble, 1, 13, onReceiveRX1);
 }
 
 ISR(INT7_vect) {
-	uint8_t interruptFlags = readRegister(CANINTF);
-	printf("Received CAN interrupt! flags: 0x%02x\r\n", interruptFlags);
-	//if (RX0IF_SET == (interruptFlags & RX0IF)) {
-		//// A message is received in RX buffer 0
-		//uint32_t canID = 0;
-		//uint8_t* part = (uint8_t*) &canID;
-		//uint8_t value;
-		//part[0] = readRegister(RXB0EID0);
-		//part[1] = readRegister(RXB0EID8);
-		//value = readRegister(RXB0SIDL);
-		//part[2] = (value & 0x3) | ((value & 0xe0) >> 3);
-		//uint8_t ide = !!(value & (1 << 3)); // extended identifier flag
-		//uint8_t ssr = !!(value & (1 << 4)); // standard frame remote transmit request bit (valid only if ide = 0)
-		//value = readRegister(RXB0SIDH);
-		//part[2] |= (value & 0x03) << 5;
-		//part[3] = (value & 0xf8) >> 3;
-		//
-		//// Get DLC (data length)
-		//value = readRegister(RXB0DLC);
-		//uint8_t dataLen = value & 0x0f;
-		//char data[dataLen];
-		//
-		//for (uint8_t i = 0; i < dataLen; i++) {
-			//data[i] = (char) readRegister(RXB0D0 + i);
-		//}
-		//printf("Received data in RXB0: %s\r\n", data);
-	//} else if (RX1IF_SET == (interruptFlags & RX1IF)) {
-		//// A message is received in RX buffer 1
-		//uint32_t canID = 0;
-		//uint8_t* part = (uint8_t*) &canID;
-		//uint8_t value;
-		//part[0] = readRegister(RXB1EID0);
-		//part[1] = readRegister(RXB1EID8);
-		//value = readRegister(RXB1SIDL);
-		//part[2] = (value & 0x3) | ((value & 0xe0) >> 3);
-		//uint8_t ide = !!(value & (1 << 3)); // extended identifier flag
-		//uint8_t ssr = !!(value & (1 << 4)); // standard frame remote transmit request bit (valid only if ide = 0)
-		//value = readRegister(RXB1SIDH);
-		//part[2] |= (value & 0x03) << 5;
-		//part[3] = (value & 0xf8) >> 3;
-			//
-		//// Get DLC (data length)
-		//value = readRegister(RXB1DLC);
-		//uint8_t dataLen = value & 0x0f;
-		//char data[dataLen];
-		////char data[3];
-		////data[0] = readRegister(RXB1D0);
-		////data[1] = readRegister(RXB1D1);
-		////data[2] = readRegister(RXB1D2);
-			//
-		//for (uint8_t i = 0; i < dataLen; i++) {
-			//data[i] = (char) readRegister(RXB1D0 + i);
-		//}
-		////printf("data0: %d\r\n", data[0]);
-		////printf("data1: %d\r\n", data[1]);
-		////printf("data2: %d\r\n", data[2]);
-		//
-		//printf("Received data: %s with CAN id: 0x%lx in RXB1 with length: %d\r\n", data, canID, dataLen);
-	//}
+	CAN_DEBUG_LOG("Received CAN interrupt!\r\n");
+	uint8_t preamble[2] = {READ_INSTRUC, CANINTF}; // CANINFT and EFLG are next to each other
+	asyncReadSPI(preamble, 2, 2, onInterrupt);
+	//uint8_t interruptFlags = readRegister(CANINTF);
+	//uint8_t rxb0ctrl = readRegister(RXB0CTRL);
+	//uint8_t rxb1ctrl = readRegister(RXB1CTRL);
+	//uint8_t eflg = readRegister(EFLG);
+	//CAN_DEBUG_LOG("Received CAN interrupt!\r\nCANINTF: 0x%02x\r\nRXB0CTRL: 0x%02x\r\nRXB1CTRL: 0x%02x\r\nEFLG: 0x%02x\r\n", interruptFlags, rxb0ctrl, rxb1ctrl, eflg);
+
 }

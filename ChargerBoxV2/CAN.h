@@ -22,6 +22,8 @@
  * SPI must be set up for this to work.
  */
 void setupCAN();
+
+// old/deprecated: (uses non-async SPI calls)
 void writeCAN(uint32_t canID, uint8_t* data, uint8_t dataLen);
 
 /**

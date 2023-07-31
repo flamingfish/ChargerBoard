@@ -189,6 +189,7 @@ void testLoop() {
 		//writeCAN(0x1806E5F4L, (uint8_t*) "Hello", 6);
 		setCANID(0, 0x1806E5F4L);
 		sendCANMessage(0, (uint8_t*) "Hello", 6);
+		sendCANMessage(0, (uint8_t*) "Hello", 6);
 		++count;
 	} else {
 		if (currentTime - lastTime > 2000) {
